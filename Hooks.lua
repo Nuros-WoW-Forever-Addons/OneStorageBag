@@ -76,25 +76,37 @@ end
 
 if OpenAllBags then
     hooksecurefunc("OpenAllBags", function()
-        OneStorageBag:Show()
+        local stack = debugstack()
+        if not stack:find("Toggle") then
+            OneStorageBag:Show()
+        end
     end)
 end
 
 if OpenBackpack then
     hooksecurefunc("OpenBackpack", function()
-        OneStorageBag:Show()
+        local stack = debugstack()
+        if not stack:find("Toggle") then
+            OneStorageBag:Show()
+        end
     end)
 end
 
 if CloseAllBags then
     hooksecurefunc("CloseAllBags", function()
-        OneStorageBag:Hide()
+        local stack = debugstack()
+        if not stack:find("Toggle") then
+            OneStorageBag:Hide()
+        end
     end)
 end
 
 if CloseBackpack then
     hooksecurefunc("CloseBackpack", function()
-        OneStorageBag:Hide()
+        local stack = debugstack()
+        if not stack:find("Toggle") then
+            OneStorageBag:Hide()
+        end
     end)
 end
 
