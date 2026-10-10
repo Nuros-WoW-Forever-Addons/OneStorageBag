@@ -19,94 +19,83 @@ toggleBtn:SetScript("OnClick", function()
 end)
 
 -------------------------------------------------------------------------------
--- Native Blizzard Container Suppression
+-- Native Blizzard Container Suppression (Taint-Free)
 -------------------------------------------------------------------------------
 
-local function CloseNativeContainerFrames()
-    if InCombatLockdown and InCombatLockdown() then return end
+local nativeSuppressed = false
+local function SuppressNativeContainers()
+    if nativeSuppressed then return end
+    nativeSuppressed = true
+    
+    local parent = ContainerFrameContainer or UIParent
+    local disabled = CreateFrame("Frame", "OneStorage_DisabledContainerFrame", parent)
+    disabled:SetAllPoints()
+    disabled:Hide()
+    
     for i = 1, (NUM_CONTAINER_FRAMES or 13) do
-        local frame = _G["ContainerFrame" .. i]
-        if frame and frame:IsShown() then
-            frame:Hide()
+        local f = _G["ContainerFrame" .. i]
+        if f then
+            f:SetParent(disabled)
+            hooksecurefunc(f, "SetID", function(frame)
+                frame:SetParent(disabled)
+            end)
         end
     end
-    if ContainerFrameCombinedBags and ContainerFrameCombinedBags:IsShown() then
-        ContainerFrameCombinedBags:Hide()
+    if ContainerFrameCombinedBags then
+        ContainerFrameCombinedBags:SetParent(disabled)
     end
 end
 
--- Suppress native container generation if triggered by Blizzard UI
-if ContainerFrame_GenerateFrame then
-    hooksecurefunc("ContainerFrame_GenerateFrame", function(frame)
-        if InCombatLockdown and InCombatLockdown() then return end
-        if frame and frame:IsShown() then
-            frame:Hide()
+-------------------------------------------------------------------------------
+-- Secure Bag Toggling Hooks (Preserves Blizzard execution context)
+-------------------------------------------------------------------------------
+
+if ToggleAllBags then
+    hooksecurefunc("ToggleAllBags", function()
+        OneStorageBag:Toggle()
+    end)
+end
+
+if ToggleBackpack then
+    hooksecurefunc("ToggleBackpack", function()
+        local stack = debugstack()
+        if not stack:find("ToggleAllBags") then
+            OneStorageBag:Toggle()
         end
     end)
 end
 
--------------------------------------------------------------------------------
--- Default Blizzard Bag Functions Replacement
--------------------------------------------------------------------------------
-
-function ToggleAllBags()
-    OneStorageBag:Toggle()
-    CloseNativeContainerFrames()
-end
-
-function ToggleBackpack()
-    OneStorageBag:Toggle()
-    CloseNativeContainerFrames()
-end
-
-function OpenAllBags(forceOpen)
-    OneStorageBag:Show()
-    CloseNativeContainerFrames()
-end
-
-function OpenBackpack()
-    OneStorageBag:Show()
-    CloseNativeContainerFrames()
-end
-
-function CloseAllBags()
-    OneStorageBag:Hide()
-    CloseNativeContainerFrames()
-end
-
-function CloseBackpack()
-    OneStorageBag:Hide()
-    CloseNativeContainerFrames()
-end
-
-function ToggleBag(bagID)
-    OneStorageBag:Toggle()
-    CloseNativeContainerFrames()
-end
-
-function OpenBag(bagID)
-    OneStorageBag:Show()
-    CloseNativeContainerFrames()
-end
-
-function CloseBag(bagID)
-    OneStorageBag:Hide()
-    CloseNativeContainerFrames()
-end
-
--- Update IsBagOpen query so Blizzard UI buttons (e.g. Backpack bar)
--- reflect the opened/closed state of the player bags.
-local orig_IsBagOpen = IsBagOpen
-function IsBagOpen(bagID)
-    if OneStorageBag and OneStorageBag.frame and OneStorageBag.frame:IsShown() then
-        if bagID and bagID >= 0 and bagID <= 4 then
-            return true
+if ToggleBag then
+    hooksecurefunc("ToggleBag", function(bagID)
+        local stack = debugstack()
+        if not stack:find("OpenBackpack") and not stack:find("ToggleBackpack") and not stack:find("ToggleAllBags") then
+            OneStorageBag:Toggle()
         end
-    end
-    if orig_IsBagOpen then
-        return orig_IsBagOpen(bagID)
-    end
-    return false
+    end)
+end
+
+if OpenAllBags then
+    hooksecurefunc("OpenAllBags", function()
+        OneStorageBag:Show()
+    end)
+end
+
+if OpenBackpack then
+    hooksecurefunc("OpenBackpack", function()
+        OneStorageBag:Show()
+    end)
+end
+
+if CloseAllBags then
+    hooksecurefunc("CloseAllBags", function()
+        OneStorageBag:Hide()
+    end)
+end
+
+if CloseBackpack then
+    hooksecurefunc("CloseBackpack", function()
+        OneStorageBag:Hide()
+    end)
 end
 
 -------------------------------------------------------------------------------
@@ -132,15 +121,7 @@ hookFrame:SetScript("OnEvent", function(self, event)
     local db = _G.OneStorageBagDB or {}
     
     if event == "PLAYER_LOGIN" then
-        CloseNativeContainerFrames()
-        if ContainerFrame_GenerateFrame then
-            pcall(hooksecurefunc, "ContainerFrame_GenerateFrame", function(frame)
-                if InCombatLockdown and InCombatLockdown() then return end
-                if frame and frame:IsShown() then
-                    frame:Hide()
-                end
-            end)
-        end
+        SuppressNativeContainers()
         
     -- 1. Merchant / Vendor
     elseif event == "MERCHANT_SHOW" then

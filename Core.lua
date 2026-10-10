@@ -72,13 +72,25 @@ function OneStorageBag:GetBagParentFrame(bagID)
 end
 
 local function OnItemEnter(self)
-    if not self.bagID or not self.slotID then return end
-    OneStorageBag:HighlightBagBarButton(self.bagID)
+    local bag = self.bag or (self:GetParent() and self:GetParent():GetID())
+    local slot = self.slot or self:GetID()
+    if not bag or not slot then return end
+    
+    -- Clear Blizzard NewItem overlay if present
+    if C_NewItems and C_NewItems.RemoveNewItem then
+        C_NewItems.RemoveNewItem(bag, slot)
+    end
+    if self.NewItemTexture then self.NewItemTexture:Hide() end
+    if self.BattlepayItemTexture then self.BattlepayItemTexture:Hide() end
+    if self.flashAnim and self.flashAnim:IsPlaying() then self.flashAnim:Stop() end
+    if self.newitemglowAnim and self.newitemglowAnim:IsPlaying() then self.newitemglowAnim:Stop() end
+
+    OneStorageBag:HighlightBagBarButton(bag)
     GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
     if GameTooltip.SetBagItem then
-        GameTooltip:SetBagItem(self.bagID, self.slotID)
+        GameTooltip:SetBagItem(bag, slot)
     else
-        local link = ContainerHelper:GetItemLink(self.bagID, self.slotID)
+        local link = ContainerHelper:GetItemLink(bag, slot)
         if link then
             GameTooltip:SetHyperlink(link)
         end
@@ -86,10 +98,10 @@ local function OnItemEnter(self)
     GameTooltip:Show()
     
     if self.hasItem then
-        ContainerHelper:ShowItemCursor(self.bagID, self.slotID, self.isReadable)
+        ContainerHelper:ShowItemCursor(bag, slot, self.isReadable)
         self:SetScript("OnUpdate", function(s)
             if GameTooltip:IsOwned(s) then
-                ContainerHelper:ShowItemCursor(s.bagID, s.slotID, s.isReadable)
+                ContainerHelper:ShowItemCursor(bag, slot, s.isReadable)
             end
         end)
     else
@@ -119,10 +131,12 @@ function OneStorageBag:CreateItemButton(index)
     btn:SetScript("OnEvent", nil)
     btn:SetScript("OnShow", nil)
     
-    -- Ensure OnClick uses Blizzard's native ContainerFrameItemButton_OnClick
-    if not btn:GetScript("OnClick") and ContainerFrameItemButton_OnClick then
-        btn:SetScript("OnClick", ContainerFrameItemButton_OnClick)
-    end
+    -- Suppress Blizzard template default glow / battlepay overlays
+    if btn.BattlepayItemTexture then btn.BattlepayItemTexture:Hide() end
+    if btn.NewItemTexture then btn.NewItemTexture:Hide() end
+    if btn.ExtendedSlot then btn.ExtendedSlot:Hide() end
+    if btn.flashAnim and btn.flashAnim:IsPlaying() then btn.flashAnim:Stop() end
+    if btn.newitemglowAnim and btn.newitemglowAnim:IsPlaying() then btn.newitemglowAnim:Stop() end
     
     -- Slot Background Texture (Empty Slot art)
     local slotBg = btn:CreateTexture(nil, "BACKGROUND")
@@ -217,8 +231,9 @@ end
 function OneStorageBag:HighlightBagSlots(bagID)
     self.highlightedBagID = bagID
     for _, btn in ipairs(self.buttons) do
-        if btn:IsShown() and btn.bagID ~= nil then
-            if btn.bagID == bagID then
+        local btnBag = btn.bag or (btn:GetParent() and btn:GetParent():GetID())
+        if btn:IsShown() and btnBag ~= nil then
+            if btnBag == bagID then
                 if btn.BagHighlight then btn.BagHighlight:Show() end
                 if btn.BagHighlightBorder then btn.BagHighlightBorder:Show() end
                 btn:LockHighlight()
@@ -379,16 +394,21 @@ function OneStorageBag:RefreshLayout()
             btn:SetPoint("TOPLEFT", self.frame.ContentArea, "TOPLEFT", slotData.x, slotData.y)
             
             btn:SetID(slotData.slotID)
-            btn.bagID = slotData.bagID
-            btn.slotID = slotData.slotID
-            btn.GetBagID = function(s) return s.bagID end
+            btn.bag = slotData.bagID
+            btn.slot = slotData.slotID
+            btn.bagID = nil
+            btn.slotID = nil
+            btn.GetBagID = nil
             btn:Show()
             
             self:UpdateButton(btn)
         else
             if btn then
+                btn.bag = nil
+                btn.slot = nil
                 btn.bagID = nil
                 btn.slotID = nil
+                btn.GetBagID = nil
                 btn:Hide()
             end
         end
@@ -400,9 +420,16 @@ function OneStorageBag:RefreshLayout()
 end
 
 function OneStorageBag:UpdateButton(btn)
-    local bagID = btn.bagID
-    local slotID = btn.slotID
+    local bagID = btn.bag or (btn:GetParent() and btn:GetParent():GetID())
+    local slotID = btn.slot or btn:GetID()
     if not bagID or not slotID then return end
+    
+    -- Suppress Blizzard template default glow / battlepay overlays
+    if btn.BattlepayItemTexture then btn.BattlepayItemTexture:Hide() end
+    if btn.NewItemTexture then btn.NewItemTexture:Hide() end
+    if btn.ExtendedSlot then btn.ExtendedSlot:Hide() end
+    if btn.flashAnim and btn.flashAnim:IsPlaying() then btn.flashAnim:Stop() end
+    if btn.newitemglowAnim and btn.newitemglowAnim:IsPlaying() then btn.newitemglowAnim:Stop() end
     
     local info = ContainerHelper:GetItemInfo(bagID, slotID)
     
