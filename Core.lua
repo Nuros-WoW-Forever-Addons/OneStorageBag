@@ -898,6 +898,7 @@ function OneStorageBag:CreateFrame()
     end
 
     local function UpdateBlizzardBagButtons()
+        if InCombatLockdown and InCombatLockdown() then return end
         local isShown = frame:IsShown() and true or false
         if MainMenuBarBackpackButton then
             pcall(function()

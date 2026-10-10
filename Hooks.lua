@@ -23,6 +23,7 @@ end)
 -------------------------------------------------------------------------------
 
 local function CloseNativeContainerFrames()
+    if InCombatLockdown and InCombatLockdown() then return end
     for i = 1, (NUM_CONTAINER_FRAMES or 13) do
         local frame = _G["ContainerFrame" .. i]
         if frame and frame:IsShown() then
@@ -37,6 +38,7 @@ end
 -- Suppress native container generation if triggered by Blizzard UI
 if ContainerFrame_GenerateFrame then
     hooksecurefunc("ContainerFrame_GenerateFrame", function(frame)
+        if InCombatLockdown and InCombatLockdown() then return end
         if frame and frame:IsShown() then
             frame:Hide()
         end
@@ -133,6 +135,7 @@ hookFrame:SetScript("OnEvent", function(self, event)
         CloseNativeContainerFrames()
         if ContainerFrame_GenerateFrame then
             pcall(hooksecurefunc, "ContainerFrame_GenerateFrame", function(frame)
+                if InCombatLockdown and InCombatLockdown() then return end
                 if frame and frame:IsShown() then
                     frame:Hide()
                 end
