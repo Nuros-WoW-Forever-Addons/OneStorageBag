@@ -59,7 +59,7 @@ end
 -- Item Slot Button Creation & Pooling
 -------------------------------------------------------------------------------
 
-local function OnItemClick(self, button)
+local function OnItemPreClick(self, button)
     local bagID = self.bagID
     local slotID = self.slotID
     if not bagID or not slotID then return end
@@ -80,8 +80,6 @@ local function OnItemClick(self, button)
             end
         end
         ContainerHelper:PickupItem(bagID, slotID)
-    elseif button == "RightButton" then
-        ContainerHelper:UseItem(bagID, slotID)
     end
 end
 
@@ -120,7 +118,7 @@ end
 
 function OneStorageBag:CreateItemButton(index)
     local name = "OneStorageBagItem" .. index
-    local btn = CreateFrame("Button", name, self.frame.ContentArea)
+    local btn = CreateFrame("Button", name, self.frame.ContentArea, "SecureActionButtonTemplate")
     btn:SetSize(37, 37)
     btn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
     btn:RegisterForDrag("LeftButton")
@@ -198,7 +196,7 @@ function OneStorageBag:CreateItemButton(index)
     cd:SetAllPoints(btn)
     btn.Cooldown = cd
     
-    btn:SetScript("OnClick", OnItemClick)
+    btn:SetScript("PreClick", OnItemPreClick)
     btn:SetScript("OnDragStart", function(self)
         if self.bagID and self.slotID then
             ContainerHelper:PickupItem(self.bagID, self.slotID)
@@ -275,6 +273,10 @@ end
 -------------------------------------------------------------------------------
 
 function OneStorageBag:RefreshLayout()
+    if InCombatLockdown and InCombatLockdown() then
+        self.needsLayoutUpdate = true
+        return
+    end
     if not self.frame or not self.frame.ContentArea then return end
     
     local cols = (OneStorageBagDB and OneStorageBagDB.columns) or defaultDB.columns
@@ -381,7 +383,21 @@ function OneStorageBag:RefreshLayout()
             
             self:UpdateButton(btn)
         else
-            if btn then btn:Hide() end
+            if btn then
+                btn.bagID = nil
+                btn.slotID = nil
+                if not InCombatLockdown() then
+                    btn:SetAttribute("type2", nil)
+                    btn:SetAttribute("item2", nil)
+                    btn:SetAttribute("*type2", nil)
+                    btn:SetAttribute("*item2", nil)
+                    btn:SetAttribute("bag2", nil)
+                    btn:SetAttribute("slot2", nil)
+                    btn:SetAttribute("target-bag2", nil)
+                    btn:SetAttribute("target-slot2", nil)
+                end
+                btn:Hide()
+            end
         end
     end
     
@@ -403,6 +419,19 @@ function OneStorageBag:UpdateButton(btn)
         btn.Icon:SetTexture(info.icon)
         btn.Icon:Show()
         btn.SlotBg:Hide()
+        
+        -- Secure Item Attributes for Right-Click (Item usage / consumption / vendor sell)
+        if not InCombatLockdown() then
+            local bagSlotStr = string.format("%d %d", bagID, slotID)
+            btn:SetAttribute("type2", "item")
+            btn:SetAttribute("item2", bagSlotStr)
+            btn:SetAttribute("*type2", "item")
+            btn:SetAttribute("*item2", bagSlotStr)
+            btn:SetAttribute("bag2", bagID)
+            btn:SetAttribute("slot2", slotID)
+            btn:SetAttribute("target-bag2", bagID)
+            btn:SetAttribute("target-slot2", slotID)
+        end
         
         -- Stack Count
         if info.count and info.count > 1 then
@@ -475,6 +504,16 @@ function OneStorageBag:UpdateButton(btn)
         btn.hasItem = false
         btn.isReadable = nil
         -- Empty Slot
+        if not InCombatLockdown() then
+            btn:SetAttribute("type2", nil)
+            btn:SetAttribute("item2", nil)
+            btn:SetAttribute("*type2", nil)
+            btn:SetAttribute("*item2", nil)
+            btn:SetAttribute("bag2", nil)
+            btn:SetAttribute("slot2", nil)
+            btn:SetAttribute("target-bag2", nil)
+            btn:SetAttribute("target-slot2", nil)
+        end
         btn.Icon:Hide()
         btn.Count:Hide()
         btn.Cooldown:Hide()
@@ -1180,6 +1219,7 @@ SafeRegisterEvent(eventFrame, "TRADE_SHOW")
 SafeRegisterEvent(eventFrame, "TRADE_CLOSED")
 SafeRegisterEvent(eventFrame, "AUCTION_HOUSE_SHOW")
 SafeRegisterEvent(eventFrame, "AUCTION_HOUSE_CLOSED")
+SafeRegisterEvent(eventFrame, "PLAYER_REGEN_ENABLED")
 
 eventFrame:SetScript("OnEvent", function(self, event, arg1)
     if event == "ADDON_LOADED" and arg1 == addonName then
@@ -1192,6 +1232,12 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1)
         
     elseif event == "PLAYER_LOGIN" then
         OneStorageBag:CreateFrame()
+        
+    elseif event == "PLAYER_REGEN_ENABLED" then
+        if OneStorageBag.needsLayoutUpdate or (OneStorageBag.frame and OneStorageBag.frame:IsShown()) then
+            OneStorageBag.needsLayoutUpdate = nil
+            OneStorageBag:RefreshLayout()
+        end
         
     elseif event == "BAG_UPDATE" or event == "BAG_UPDATE_DELAYED" or event == "BAG_CONTAINER_UPDATE" or event == "PLAYER_EQUIPMENT_CHANGED" or event == "ITEM_LOCK_CHANGED" then
         if OneStorageBag.frame and OneStorageBag.frame:IsShown() then
