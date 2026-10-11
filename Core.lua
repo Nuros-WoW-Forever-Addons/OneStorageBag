@@ -28,6 +28,18 @@ local defaultDB = {
     autoOpenAuction = true,
 }
 
+function OneStorageBag:GetOption(key)
+    if _G.OneStorageBagDB and _G.OneStorageBagDB[key] ~= nil then
+        return _G.OneStorageBagDB[key]
+    end
+    return defaultDB[key]
+end
+
+function OneStorageBag:SetOption(key, val)
+    _G.OneStorageBagDB = _G.OneStorageBagDB or {}
+    _G.OneStorageBagDB[key] = val
+end
+
 -------------------------------------------------------------------------------
 -- Window Title & Capacity Badges
 -------------------------------------------------------------------------------
@@ -302,8 +314,8 @@ function OneStorageBag:RefreshLayout()
     end
     if not self.frame or not self.frame.ContentArea then return end
     
-    local cols = (OneStorageBagDB and OneStorageBagDB.columns) or defaultDB.columns
-    local separateBags = (OneStorageBagDB and OneStorageBagDB.separateBags ~= nil) and OneStorageBagDB.separateBags or defaultDB.separateBags
+    local cols = self:GetOption("columns")
+    local separateBags = self:GetOption("separateBags")
     local btnSize = 37
     local spacing = 4
     local bagGap = 8
@@ -1081,10 +1093,9 @@ function OneStorageBag:CreateOptionsFrame()
         "Columns",
         6,
         16,
-        function() return (OneStorageBagDB and OneStorageBagDB.columns) or defaultDB.columns end,
+        function() return OneStorageBag:GetOption("columns") end,
         function(val)
-            OneStorageBagDB = OneStorageBagDB or {}
-            OneStorageBagDB.columns = val
+            OneStorageBag:SetOption("columns", val)
             OneStorageBag:RefreshLayout()
         end
     )
@@ -1100,11 +1111,10 @@ function OneStorageBag:CreateOptionsFrame()
         "Separate Bag Rows",
         "Group each equipped bag into its own row(s) instead of one continuous merged grid.",
         function()
-            return (OneStorageBagDB and OneStorageBagDB.separateBags ~= nil) and OneStorageBagDB.separateBags or defaultDB.separateBags
+            return OneStorageBag:GetOption("separateBags")
         end,
         function(val)
-            OneStorageBagDB = OneStorageBagDB or {}
-            OneStorageBagDB.separateBags = val
+            OneStorageBag:SetOption("separateBags", val)
             OneStorageBag:RefreshLayout()
         end
     )
@@ -1151,11 +1161,10 @@ function OneStorageBag:CreateOptionsFrame()
             labelText,
             tooltipText,
             function()
-                return (OneStorageBagDB and OneStorageBagDB[propName] ~= nil) and OneStorageBagDB[propName] or defaultDB[propName]
+                return OneStorageBag:GetOption(propName)
             end,
             function(val)
-                OneStorageBagDB = OneStorageBagDB or {}
-                OneStorageBagDB[propName] = val
+                OneStorageBag:SetOption(propName, val)
             end
         )
         cb:SetPoint("TOPLEFT", opt, "TOPLEFT", marginX, yOffset)
@@ -1266,25 +1275,25 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1)
         end
 
     elseif event == "MERCHANT_SHOW" then
-        if OneStorageBagDB and OneStorageBagDB.autoOpenVendor then OneStorageBag:Show() end
+        if OneStorageBag:GetOption("autoOpenVendor") then OneStorageBag:Show() end
     elseif event == "MERCHANT_CLOSED" then
-        if OneStorageBagDB and OneStorageBagDB.autoOpenVendor then OneStorageBag:Hide() end
+        if OneStorageBag:GetOption("autoOpenVendor") then OneStorageBag:Hide() end
     elseif event == "BANKFRAME_OPENED" then
-        if OneStorageBagDB and OneStorageBagDB.autoOpenBank then OneStorageBag:Show() end
+        if OneStorageBag:GetOption("autoOpenBank") then OneStorageBag:Show() end
     elseif event == "BANKFRAME_CLOSED" then
-        if OneStorageBagDB and OneStorageBagDB.autoOpenBank then OneStorageBag:Hide() end
+        if OneStorageBag:GetOption("autoOpenBank") then OneStorageBag:Hide() end
     elseif event == "MAIL_SHOW" then
-        if OneStorageBagDB and OneStorageBagDB.autoOpenMail then OneStorageBag:Show() end
+        if OneStorageBag:GetOption("autoOpenMail") then OneStorageBag:Show() end
     elseif event == "MAIL_CLOSED" then
-        if OneStorageBagDB and OneStorageBagDB.autoOpenMail then OneStorageBag:Hide() end
+        if OneStorageBag:GetOption("autoOpenMail") then OneStorageBag:Hide() end
     elseif event == "TRADE_SHOW" then
-        if OneStorageBagDB and OneStorageBagDB.autoOpenTrade then OneStorageBag:Show() end
+        if OneStorageBag:GetOption("autoOpenTrade") then OneStorageBag:Show() end
     elseif event == "TRADE_CLOSED" then
-        if OneStorageBagDB and OneStorageBagDB.autoOpenTrade then OneStorageBag:Hide() end
+        if OneStorageBag:GetOption("autoOpenTrade") then OneStorageBag:Hide() end
     elseif event == "AUCTION_HOUSE_SHOW" then
-        if OneStorageBagDB and OneStorageBagDB.autoOpenAuction then OneStorageBag:Show() end
+        if OneStorageBag:GetOption("autoOpenAuction") then OneStorageBag:Show() end
     elseif event == "AUCTION_HOUSE_CLOSED" then
-        if OneStorageBagDB and OneStorageBagDB.autoOpenAuction then OneStorageBag:Hide() end
+        if OneStorageBag:GetOption("autoOpenAuction") then OneStorageBag:Hide() end
     end
 end)
 
@@ -1303,17 +1312,16 @@ SlashCmdList["ONESTORAGEBAG"] = function(msg)
     elseif cmd == "options" or cmd == "opt" or cmd == "config" then
         OneStorageBag:ToggleOptions()
     elseif cmd == "separate" or cmd == "group" or cmd == "mode" or cmd == "rows" then
-        _G.OneStorageBagDB = _G.OneStorageBagDB or {}
-        local current = (_G.OneStorageBagDB.separateBags ~= nil) and _G.OneStorageBagDB.separateBags or defaultDB.separateBags
-        _G.OneStorageBagDB.separateBags = not current
+        local current = OneStorageBag:GetOption("separateBags")
+        OneStorageBag:SetOption("separateBags", not current)
         if OneStorageBag.frame and OneStorageBag.frame:IsShown() then
             OneStorageBag:RefreshLayout()
         end
-        local modeStr = _G.OneStorageBagDB.separateBags and "|cff00ff00Separated bag rows|r" or "|cffffcc00Merged continuous grid|r"
+        local modeStr = OneStorageBag:GetOption("separateBags") and "|cff00ff00Separated bag rows|r" or "|cffffcc00Merged continuous grid|r"
         print("|cff00ccff[OneStorageBag]|r Bag layout mode: " .. modeStr)
     elseif cmd == "cols" and tonumber(arg) then
         local c = math.max(6, math.min(16, tonumber(arg)))
-        if OneStorageBagDB then OneStorageBagDB.columns = c end
+        OneStorageBag:SetOption("columns", c)
         if OneStorageBag.frame and OneStorageBag.frame:IsShown() then
             OneStorageBag:RefreshLayout()
         end
