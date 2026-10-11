@@ -447,6 +447,9 @@ function OneStorageBag:RefreshLayout()
     self:UpdateTitle()
     self:UpdateMoney()
     self:UpdateBagBar()
+    if self.optionsFrame and self.optionsFrame:IsShown() then
+        self:DockOptions()
+    end
 end
 
 function OneStorageBag:UpdateButton(btn)
@@ -1040,8 +1043,8 @@ end
 function OneStorageBag:DockOptions()
     if not self.optionsFrame or not self.frame then return end
     self.optionsFrame:ClearAllPoints()
+    self.optionsFrame:SetSize(230, 375)
     self.optionsFrame:SetPoint("TOPRIGHT", self.frame, "TOPLEFT", 0, 0)
-    self.optionsFrame:SetPoint("BOTTOMRIGHT", self.frame, "BOTTOMLEFT", 0, 0)
 end
 
 function OneStorageBag:CreateOptionsFrame()
@@ -1049,7 +1052,7 @@ function OneStorageBag:CreateOptionsFrame()
     
     local parent = self.frame or self:CreateFrame()
     local opt = CreateFrame("Frame", "OneStorageBagOptionsFrame", UIParent, BackdropTemplateMixin and "BackdropTemplate" or nil)
-    opt:SetWidth(230)
+    opt:SetSize(230, 375)
     opt:SetFrameStrata(parent:GetFrameStrata())
     opt:SetFrameLevel(math.max(1, parent:GetFrameLevel()))
     opt:SetClampedToScreen(true)
