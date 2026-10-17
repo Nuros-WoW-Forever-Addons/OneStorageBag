@@ -1,8 +1,8 @@
-## Interface: 16001, 11200, 20400, 30300, 110000
+## Interface: 16001
 ## Title: OneStorage |cff00ccffBag|r
 ## Notes: Unified player inventory with Blizzard Metal theme, live search filtering, bag cleanup, and bag bar drawer for OneStorage Suite.
 ## Author: OneStorage Suite Team
-## Version: 0.0.1
+## Version: 0.0.2
 ## IconTexture: Interface\Icons\INV_Misc_Bag_08
 ## Dependencies: OneStorageUtils
 ## SavedVariables: OneStorageBagDB

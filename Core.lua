@@ -737,7 +737,8 @@ function OneStorageBag:CreateBagBar()
 end
 
 function OneStorageBag:ToggleBagBar()
-    self.isBagBarShown = not self.isBagBarShown
+    self.isBagBarShown = not self:GetOption("showBagBar")
+    self:SetOption("showBagBar", self.isBagBarShown)
     if not self.bagBar then
         self:CreateBagBar()
     end
@@ -749,6 +750,9 @@ function OneStorageBag:ToggleBagBar()
     end
     
     self:RefreshLayout()
+    if self.optionsFrame and self.optionsFrame:IsShown() and self.optionsFrame.RefreshOptions then
+        self.optionsFrame:RefreshOptions()
+    end
 end
 
 -------------------------------------------------------------------------------
@@ -1006,6 +1010,14 @@ function OneStorageBag:CreateFrame()
         frame:SetScript("OnHide", OnBagHide)
     end
     
+    self.isBagBarShown = self:GetOption("showBagBar") or false
+    if self.isBagBarShown then
+        if not self.bagBar then
+            self:CreateBagBar()
+        end
+        self.bagBar:Show()
+    end
+    
     return frame
 end
 
@@ -1015,6 +1027,17 @@ end
 
 function OneStorageBag:Show()
     local f = self:CreateFrame()
+    self.isBagBarShown = self:GetOption("showBagBar") or false
+    if self.isBagBarShown then
+        if not self.bagBar then
+            self:CreateBagBar()
+        end
+        self.bagBar:Show()
+    else
+        if self.bagBar then
+            self.bagBar:Hide()
+        end
+    end
     f:Show()
     self:RefreshLayout()
 end
@@ -1132,10 +1155,11 @@ function OneStorageBag:CreateOptionsFrame()
         "Show Bag Drawer",
         "Show or hide the drawer of equipped bag containers.",
         function()
-            return OneStorageBag.isBagBarShown
+            return OneStorageBag:GetOption("showBagBar")
         end,
         function(val)
             OneStorageBag.isBagBarShown = val
+            OneStorageBag:SetOption("showBagBar", val)
             if not OneStorageBag.bagBar then
                 OneStorageBag:CreateBagBar()
             end
@@ -1257,6 +1281,7 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1)
                 _G.OneStorageBagDB[k] = v
             end
         end
+        OneStorageBag.isBagBarShown = OneStorageBag:GetOption("showBagBar") or false
         
     elseif event == "PLAYER_LOGIN" then
         OneStorageBag:CreateFrame()
@@ -1314,6 +1339,8 @@ SlashCmdList["ONESTORAGEBAG"] = function(msg)
         print("|cff00ccff[OneStorageBag]|r Window position reset to default.")
     elseif cmd == "options" or cmd == "opt" or cmd == "config" then
         OneStorageBag:ToggleOptions()
+    elseif cmd == "bagbar" or cmd == "drawer" or cmd == "bags" then
+        OneStorageBag:ToggleBagBar()
     elseif cmd == "separate" or cmd == "group" or cmd == "mode" or cmd == "rows" then
         local current = OneStorageBag:GetOption("separateBags")
         OneStorageBag:SetOption("separateBags", not current)
