@@ -18,6 +18,8 @@ Part of the **OneSuite** family of addons.
 - 🗄️ **Collapsible Bag Bar Drawer**: Click the bag icon to reveal or hide equipped bag slots for easy bag upgrades.
 - 🧹 **One-Click Bag Cleanup**: Integrated cleanup button to defragment and sort inventory contents.
 - 🪙 **Scrap Indicator Badges**: Automatically displays a gold coin badge on vendor junk items (integrated with `OneStorageScrap`).
+- 👥 **Cross-Character Inventory Inspection**: View the bags and equipped bags of any character on your account from anywhere via the bottom-right character dropdown.
+- 🗂️ **Enhanced Multi-Character Tooltips**: Optional sub-frame anchored to item tooltips showing bag and bank counts across all alts.
 - 🔄 **Smart Auto-Open Hooks**: Automatically opens and closes bags when interacting with Merchants, the Bank, Mailboxes, Trade windows, or the Auction House.
 
 ---
@@ -48,6 +50,8 @@ Then start or reload World of Warcraft (`/reload`).
 | `/osbag mode` or `/osbag separate` | Toggle between separated bag rows and merged continuous grid |
 | `/osbag cols <6-16>` | Set the column width of the bag window |
 | `/osbag bagbar` or `/osbag drawer` | Toggle equipped bag drawer visibility |
+| `/osbag money` or `/osbag largemoney` | Toggle large money text in bag footer |
+| `/osbag scrap` or `/osbag scrapopt` | Open docked OneStorage Scrap options panel |
 | `/osbag reset` | Reset bag window position to default |
 | `/osbag options` | Open configuration options |
 

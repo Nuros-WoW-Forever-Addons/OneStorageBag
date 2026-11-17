@@ -21,6 +21,8 @@ local defaultDB = {
     columns = 10,
     separateBags = true,
     showBagBar = false,
+    largeMoney = false,
+    openScrapOptions = false,
     autoOpenVendor = true,
     autoOpenBank = true,
     autoOpenMail = true,
@@ -47,14 +49,36 @@ end
 function OneStorageBag:UpdateTitle()
     if not self.frame then return end
     
-    local free, total = ContainerHelper:GetFreeSlotCount(ContainerHelper.BAG_IDS)
-    local titleText = string.format("|cffffffffInventory|r  |cff888888(%d/%d Free)|r", free, total)
-    
     local titleTarget = (self.frame.TitleContainer and self.frame.TitleContainer.TitleText) 
         or self.frame.TitleText or self.frame.Title
-    if titleTarget then
-        titleTarget:SetText(titleText)
+    if not titleTarget then return end
+    
+    if self.viewingAlt then
+        local cache = OneStorageUtils and OneStorageUtils.CharacterCache
+        local charData = cache and cache:GetCharacter(self.viewingAlt)
+        local hex = (cache and charData and cache.GetClassColorHex(charData.class)) or "ffffcc00"
+        local bags = (charData and charData.bags) or {}
+        local total, used = 0, 0
+        for bagID = 0, 5 do
+            local b = bags[bagID]
+            if b and b.numSlots then
+                total = total + b.numSlots
+                for slotID = 1, b.numSlots do
+                    if b.slots and b.slots[slotID] then
+                        used = used + 1
+                    end
+                end
+            end
+        end
+        local free = total - used
+        local displayName = (charData and charData.fullName) or self.viewingAlt
+        titleTarget:SetText(string.format("|c%s[%s]|r |cffffcc00(Snapshot)|r |cff888888(%d/%d Free)|r", hex, displayName, free, total))
+        return
     end
+    
+    local free, total = ContainerHelper:GetFreeSlotCount(ContainerHelper.BAG_IDS)
+    local titleText = string.format("|cffffffffInventory|r  |cff888888(%d/%d Free)|r", free, total)
+    titleTarget:SetText(titleText)
 end
 
 -------------------------------------------------------------------------------
@@ -63,8 +87,30 @@ end
 
 function OneStorageBag:UpdateMoney()
     if not self.frame or not self.frame.MoneyText then return end
-    local copper = GetMoney() or 0
-    self.frame.MoneyText:SetText(ContainerHelper:FormatMoney(copper))
+    local copper = 0
+    if self.viewingAlt then
+        local cache = OneStorageUtils and OneStorageUtils.CharacterCache
+        local charData = cache and cache:GetCharacter(self.viewingAlt)
+        copper = (charData and charData.money) or 0
+    else
+        copper = GetMoney() or 0
+    end
+    local isLarge = self:GetOption("largeMoney")
+    if isLarge then
+        if _G["GameFontHighlightLarge"] then
+            self.frame.MoneyText:SetFontObject("GameFontHighlightLarge")
+        else
+            self.frame.MoneyText:SetFontObject("GameFontHighlight")
+        end
+        self.frame.MoneyText:ClearAllPoints()
+        self.frame.MoneyText:SetPoint("BOTTOMLEFT", self.frame, "BOTTOMLEFT", 16, 9)
+        self.frame.MoneyText:SetText(ContainerHelper:FormatMoney(copper, 16))
+    else
+        self.frame.MoneyText:SetFontObject("GameFontHighlightSmall")
+        self.frame.MoneyText:ClearAllPoints()
+        self.frame.MoneyText:SetPoint("BOTTOMLEFT", self.frame, "BOTTOMLEFT", 16, 10)
+        self.frame.MoneyText:SetText(ContainerHelper:FormatMoney(copper, 12))
+    end
 end
 
 -------------------------------------------------------------------------------
@@ -96,6 +142,18 @@ local function OnItemEnter(self)
     if self.BattlepayItemTexture then self.BattlepayItemTexture:Hide() end
     if self.flashAnim and self.flashAnim:IsPlaying() then self.flashAnim:Stop() end
     if self.newitemglowAnim and self.newitemglowAnim:IsPlaying() then self.newitemglowAnim:Stop() end
+
+    if self.isAltSlot then
+        OneStorageBag:HighlightBagBarButton(bag)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        if self.altLink then
+            GameTooltip:SetHyperlink(self.altLink)
+        else
+            GameTooltip:SetText("Empty Slot", 1, 1, 1)
+        end
+        GameTooltip:Show()
+        return
+    end
 
     OneStorageBag:HighlightBagBarButton(bag)
     GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
@@ -244,6 +302,9 @@ function OneStorageBag:CreateItemButton(index)
     btn:SetScript("OnEnter", OnItemEnter)
     btn:SetScript("OnLeave", OnItemLeave)
     
+    -- Preserve native ContainerFrameItemButtonTemplate OnClick and OnDragStart handlers
+    -- to ensure zero taint when targeting spells (e.g. Disenchant, Milling) or using items.
+    
     return btn
 end
 
@@ -323,7 +384,69 @@ function OneStorageBag:RefreshLayout()
     local slotList = {}
     local contentH = 0
     
-    if separateBags then
+    if self.viewingAlt then
+        local cache = OneStorageUtils and OneStorageUtils.CharacterCache
+        local charData = cache and cache:GetCharacter(self.viewingAlt)
+        local bags = (charData and charData.bags) or {}
+        
+        if separateBags then
+            local activeBags = {}
+            for bagID = 0, 5 do
+                local bagData = bags[bagID]
+                if bagData and bagData.numSlots and bagData.numSlots > 0 then
+                    table.insert(activeBags, { bagID = bagID, numSlots = bagData.numSlots })
+                end
+            end
+            
+            local currentRow = 0
+            local numActiveBags = #activeBags
+            
+            for bagIdx, bagData in ipairs(activeBags) do
+                local bagID = bagData.bagID
+                local numSlots = bagData.numSlots
+                local bagRows = math.ceil(numSlots / cols)
+                
+                for slotID = 1, numSlots do
+                    local col = (slotID - 1) % cols
+                    local localRow = math.floor((slotID - 1) / cols)
+                    local row = currentRow + localRow
+                    local x = col * (btnSize + spacing)
+                    local y = -(row * (btnSize + spacing) + (bagIdx - 1) * bagGap)
+                    
+                    table.insert(slotList, {
+                        bagID  = bagID,
+                        slotID = slotID,
+                        x      = x,
+                        y      = y,
+                    })
+                end
+                
+                currentRow = currentRow + bagRows
+            end
+            
+            local totalRows = math.max(1, currentRow)
+            contentH = (totalRows * btnSize) + ((totalRows - 1) * spacing) + (math.max(0, numActiveBags - 1) * bagGap)
+        else
+            for bagID = 0, 5 do
+                local bagData = bags[bagID]
+                local numSlots = (bagData and bagData.numSlots) or 0
+                for slotID = 1, numSlots do
+                    table.insert(slotList, { bagID = bagID, slotID = slotID })
+                end
+            end
+            
+            local totalSlots = #slotList
+            local rows = math.max(1, math.ceil(totalSlots / cols))
+            contentH = (rows * btnSize) + ((rows - 1) * spacing)
+            
+            for i, slotData in ipairs(slotList) do
+                local col = (i - 1) % cols
+                local row = math.floor((i - 1) / cols)
+                slotData.x = col * (btnSize + spacing)
+                slotData.y = -row * (btnSize + spacing)
+            end
+        end
+    elseif separateBags then
         -- 1. Gather active player bags (only equipped bags with slots > 0)
         local activeBags = {}
         for _, bagID in ipairs(ContainerHelper:GetPlayerBagIDs()) do
@@ -384,7 +507,7 @@ function OneStorageBag:RefreshLayout()
     
     local totalSlots = #slotList
     local contentW = (cols * btnSize) + ((cols - 1) * spacing)
-    local frameW = math.max(340, contentW + 32)
+    local frameW = math.max(390, contentW + 32)
     local headerH = self.isBagBarShown and 90 or 58
     local footerH = 34
     local frameH = contentH + headerH + footerH + 16
@@ -464,7 +587,48 @@ function OneStorageBag:UpdateButton(btn)
     if btn.flashAnim and btn.flashAnim:IsPlaying() then btn.flashAnim:Stop() end
     if btn.newitemglowAnim and btn.newitemglowAnim:IsPlaying() then btn.newitemglowAnim:Stop() end
     
-    local info = ContainerHelper:GetItemInfo(bagID, slotID)
+    local info
+    if self.viewingAlt then
+        local cache = OneStorageUtils and OneStorageUtils.CharacterCache
+        local charData = cache and cache:GetCharacter(self.viewingAlt)
+        local bagData = charData and charData.bags and charData.bags[bagID]
+        local slotData = bagData and bagData.slots and bagData.slots[slotID]
+        if slotData then
+            local icon = slotData.icon
+            if not icon and slotData.id and C_Item and C_Item.GetItemIconByID then
+                icon = C_Item.GetItemIconByID(slotData.id)
+                slotData.icon = icon
+            end
+            local link = slotData.link
+            if not link and slotData.id and ContainerHelper and ContainerHelper.GetItemInfoSafe then
+                local _, itemLink = ContainerHelper.GetItemInfoSafe(slotData.id)
+                if itemLink then
+                    link = itemLink
+                    slotData.link = link
+                end
+            end
+            info = {
+                icon = icon,
+                count = slotData.count or 1,
+                quality = slotData.quality or 1,
+                hyperlink = link,
+                itemID = slotData.id,
+                readable = false,
+            }
+        end
+        btn.isAltSlot = true
+        btn.altLink = (info and info.hyperlink) or (slotData and slotData.link)
+        -- Disable clicks and drags on cached alt slots to prevent interaction errors
+        btn:RegisterForClicks()
+        btn:RegisterForDrag()
+    else
+        btn.isAltSlot = false
+        btn.altLink = nil
+        -- Restore native clicks and drags for current player's live inventory
+        btn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+        btn:RegisterForDrag("LeftButton")
+        info = ContainerHelper:GetItemInfo(bagID, slotID)
+    end
     
     if info and info.icon then
         btn.hasItem = true
@@ -482,10 +646,14 @@ function OneStorageBag:UpdateButton(btn)
         end
         
         -- Cooldown
-        local start, duration, enable = ContainerHelper:GetItemCooldown(bagID, slotID)
-        if start and duration and duration > 0 and enable == 1 then
-            btn.Cooldown:SetCooldown(start, duration)
-            btn.Cooldown:Show()
+        if not self.viewingAlt then
+            local start, duration, enable = ContainerHelper:GetItemCooldown(bagID, slotID)
+            if start and duration and duration > 0 and enable == 1 then
+                btn.Cooldown:SetCooldown(start, duration)
+                btn.Cooldown:Show()
+            else
+                btn.Cooldown:Hide()
+            end
         else
             btn.Cooldown:Hide()
         end
@@ -500,7 +668,9 @@ function OneStorageBag:UpdateButton(btn)
         end
         
         -- Junk / Scrap Coin Badge
-        if ContainerHelper:IsJunk(bagID, slotID) then
+        if not self.viewingAlt and ContainerHelper:IsJunk(bagID, slotID) then
+            btn.ScrapBadge:Show()
+        elseif self.viewingAlt and info and info.quality == 0 then
             btn.ScrapBadge:Show()
         else
             btn.ScrapBadge:Hide()
@@ -525,7 +695,14 @@ function OneStorageBag:UpdateButton(btn)
             if btn.BagHighlight then btn.BagHighlight:Hide() end
             if btn.BagHighlightBorder then btn.BagHighlightBorder:Hide() end
             btn:UnlockHighlight()
-            local matches = ContainerHelper:MatchesSearch(bagID, slotID, self.currentSearch)
+            local matches = false
+            if self.viewingAlt then
+                if info and info.hyperlink then
+                    matches = info.hyperlink:lower():find(self.currentSearch:lower(), 1, true) ~= nil
+                end
+            else
+                matches = ContainerHelper:MatchesSearch(bagID, slotID, self.currentSearch)
+            end
             if matches then
                 btn.SearchOverlay:Hide()
                 btn:SetAlpha(1.0)
@@ -602,7 +779,45 @@ end
 function OneStorageBag:UpdateBagBar()
     if not self.bagBar or not self.bagBarButtons then return end
     
+    if self.viewingAlt then
+        local cache = OneStorageUtils and OneStorageUtils.CharacterCache
+        local charData = cache and cache:GetCharacter(self.viewingAlt)
+        local bags = (charData and charData.bags) or {}
+        
+        for _, btn in ipairs(self.bagBarButtons) do
+            local bagID = btn:GetID()
+            local bagData = bags[bagID]
+            btn.isAltBag = true
+            
+            if bagID == 0 then
+                btn.icon:SetTexture("Interface\\Buttons\\Button-Backpack-Up")
+                btn.icon:SetVertexColor(1, 1, 1, 1)
+                btn.altLink = nil
+                if btn.QualityBorder then btn.QualityBorder:Hide() end
+            elseif bagData and bagData.icon then
+                btn.icon:SetTexture(bagData.icon)
+                btn.icon:SetVertexColor(1, 1, 1, 1)
+                btn.altLink = bagData.link
+                if bagData.quality and bagData.quality > 1 and btn.QualityBorder then
+                    local r, g, b = ContainerHelper:GetQualityColor(bagData.quality)
+                    btn.QualityBorder:SetVertexColor(r, g, b, 1)
+                    btn.QualityBorder:Show()
+                elseif btn.QualityBorder then
+                    btn.QualityBorder:Hide()
+                end
+            else
+                btn.icon:SetTexture("Interface\\PaperDoll\\UI-PaperDoll-Slot-Bag")
+                btn.icon:SetVertexColor(0.4, 0.4, 0.4, 0.8)
+                btn.altLink = nil
+                if btn.QualityBorder then btn.QualityBorder:Hide() end
+            end
+        end
+        return
+    end
+    
     for _, btn in ipairs(self.bagBarButtons) do
+        btn.isAltBag = false
+        btn.altLink = nil
         local bagID = btn:GetID()
         if bagID == 0 then
             btn.icon:SetTexture("Interface\\Buttons\\Button-Backpack-Up")
@@ -676,6 +891,7 @@ function OneStorageBag:CreateBagBar()
         btn.Highlight = highlight
         
         btn:SetScript("OnClick", function(s, button)
+            if s.isAltBag then return end
             if bagID > 0 then
                 local invID = ContainerHelper:GetBagInventoryID(bagID)
                 if invID then
@@ -688,6 +904,7 @@ function OneStorageBag:CreateBagBar()
             end
         end)
         btn:SetScript("OnDragStart", function(s)
+            if s.isAltBag then return end
             if bagID > 0 then
                 local invID = ContainerHelper:GetBagInventoryID(bagID)
                 if invID then
@@ -696,6 +913,7 @@ function OneStorageBag:CreateBagBar()
             end
         end)
         btn:SetScript("OnReceiveDrag", function(s)
+            if s.isAltBag then return end
             if bagID > 0 then
                 local invID = ContainerHelper:GetBagInventoryID(bagID)
                 if invID then
@@ -707,6 +925,17 @@ function OneStorageBag:CreateBagBar()
         btn:SetScript("OnEnter", function(s)
             OneStorageBag:HighlightBagSlots(bagID)
             GameTooltip:SetOwner(s, "ANCHOR_RIGHT")
+            if s.isAltBag then
+                if bagID == 0 then
+                    GameTooltip:SetText(BACKPACK_TOOLTIP or "Backpack", 1, 1, 1)
+                elseif s.altLink then
+                    GameTooltip:SetHyperlink(s.altLink)
+                else
+                    GameTooltip:SetText("Empty Bag Slot", 1, 1, 1)
+                end
+                GameTooltip:Show()
+                return
+            end
             if bagID == 0 then
                 GameTooltip:SetText(BACKPACK_TOOLTIP or "Backpack", 1, 1, 1)
                 local free, total = ContainerHelper:GetFreeSlotCount({ 0 })
@@ -937,6 +1166,42 @@ function OneStorageBag:CreateFrame()
     moneyText:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 16, 10)
     frame.MoneyText = moneyText
     
+    -- Bottom-Right Character Selector & Return to Self
+    if FrameHelper and FrameHelper.CreateCharacterDropdown then
+        frame.CharSelect = FrameHelper:CreateCharacterDropdown(frame, "OneStorageBag", function(charName, isCurrent)
+            if isCurrent then
+                OneStorageBag.viewingAlt = nil
+            else
+                OneStorageBag.viewingAlt = charName
+            end
+            OneStorageBag:RefreshLayout()
+            OneStorageBag:UpdateTitle()
+            OneStorageBag:UpdateMoney()
+            OneStorageBag:UpdateBagBar()
+        end)
+    end
+    
+    -- Bottom-Right Bank Button (Toggles static read-only bank)
+    if FrameHelper and FrameHelper.CreateSilverButton and frame.CharSelect then
+        local bankBtn = FrameHelper:CreateSilverButton(frame, "OneStorageBagBankButton", "Bank")
+        bankBtn:SetSize(48, 20)
+        bankBtn:SetPoint("RIGHT", frame.CharSelect, "LEFT", -6, 0)
+        bankBtn:SetScript("OnClick", function()
+            OneStorageBag:ToggleBank()
+        end)
+        bankBtn:SetScript("OnEnter", function(s)
+            GameTooltip:SetOwner(s, "ANCHOR_RIGHT")
+            GameTooltip:SetText("Toggle Bank", 1, 1, 1)
+            GameTooltip:AddLine("Open static read-only bank snapshot.", 0.8, 0.8, 0.8)
+            if OneStorageBag.viewingAlt then
+                GameTooltip:AddLine("Viewing Alt: |cffffcc00" .. tostring(OneStorageBag.viewingAlt) .. "|r", 0.2, 1.0, 0.2)
+            end
+            GameTooltip:Show()
+        end)
+        bankBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        frame.BankButton = bankBtn
+    end
+    
     -- Close Button
     if frame.CloseButton then
         frame.CloseButton:SetScript("OnClick", function()
@@ -1051,11 +1316,51 @@ function OneStorageBag:Hide()
     end
 end
 
+function OneStorageBag:IsShown()
+    return (self.frame and self.frame:IsShown()) and true or false
+end
+
 function OneStorageBag:Toggle()
-    if self.frame and self.frame:IsShown() then
+    if self:IsShown() then
         self:Hide()
     else
         self:Show()
+    end
+end
+
+function OneStorageBag:ToggleBank()
+    local bank = _G.OneStorageBank
+    if not bank then
+        if C_AddOns and C_AddOns.LoadAddOn then
+            C_AddOns.LoadAddOn("OneStorageBank")
+        elseif UIParentLoadAddOn then
+            UIParentLoadAddOn("OneStorageBank")
+        end
+        bank = _G.OneStorageBank
+    end
+    
+    if not bank then
+        print("|cff00ccff[OneStorageBag]|r OneStorageBank is not loaded or enabled.")
+        return
+    end
+    
+    local isShown = (bank.IsShown and bank:IsShown()) or (bank.frame and bank.frame:IsShown())
+    if isShown then
+        bank:Hide()
+    else
+        -- If currently inspecting an alt in bags, sync the bank window to that same alt!
+        if self.viewingAlt then
+            bank.viewingAlt = self.viewingAlt
+            if bank.frame and bank.frame.CharSelect then
+                bank.frame.CharSelect:SetSelected(self.viewingAlt)
+            end
+        else
+            bank.viewingAlt = nil
+            if bank.frame and bank.frame.CharSelect then
+                bank.frame.CharSelect:SetSelected(UnitName("player"))
+            end
+        end
+        bank:Show()
     end
 end
 
@@ -1066,8 +1371,57 @@ end
 function OneStorageBag:DockOptions()
     if not self.optionsFrame or not self.frame then return end
     self.optionsFrame:ClearAllPoints()
-    self.optionsFrame:SetSize(230, 375)
+    self.optionsFrame:SetSize(230, 475)
     self.optionsFrame:SetPoint("TOPRIGHT", self.frame, "TOPLEFT", 0, 0)
+    if self.isScrapDocked and OneStorageScrap and OneStorageScrap.optionsFrame and OneStorageScrap.optionsFrame:IsShown() then
+        self:DockScrapOptions()
+    end
+end
+
+function OneStorageBag:DockScrapOptions()
+    if not OneStorageScrap or not self.optionsFrame then return end
+    local scrapOpt = OneStorageScrap.optionsFrame or OneStorageScrap:CreateOptionsFrame()
+    if not scrapOpt then return end
+    scrapOpt:ClearAllPoints()
+    scrapOpt:SetPoint("TOPRIGHT", self.optionsFrame, "TOPLEFT", 0, 0)
+    scrapOpt:SetFrameStrata(self.optionsFrame:GetFrameStrata())
+    scrapOpt:SetFrameLevel(math.max(1, self.optionsFrame:GetFrameLevel()))
+    self.isScrapDocked = true
+end
+
+function OneStorageBag:OpenScrapOptions()
+    if not OneStorageScrap then return end
+    local scrapOpt = OneStorageScrap.optionsFrame or OneStorageScrap:CreateOptionsFrame()
+    if not scrapOpt then return end
+    self:DockScrapOptions()
+    if scrapOpt.RefreshOptions then
+        scrapOpt:RefreshOptions()
+    end
+    scrapOpt:Show()
+    self.isScrapDocked = true
+    if self.optionsFrame and self.optionsFrame.RefreshOptions then
+        self.optionsFrame:RefreshOptions()
+    end
+end
+
+function OneStorageBag:CloseScrapOptions()
+    if OneStorageScrap and OneStorageScrap.optionsFrame then
+        OneStorageScrap.optionsFrame:Hide()
+    end
+    self.isScrapDocked = false
+    if self.optionsFrame and self.optionsFrame.RefreshOptions then
+        self.optionsFrame:RefreshOptions()
+    end
+end
+
+function OneStorageBag:ToggleScrapOptions()
+    if not OneStorageScrap then return end
+    local scrapOpt = OneStorageScrap.optionsFrame or OneStorageScrap:CreateOptionsFrame()
+    if scrapOpt and scrapOpt:IsShown() and self.isScrapDocked then
+        self:CloseScrapOptions()
+    else
+        self:OpenScrapOptions()
+    end
 end
 
 function OneStorageBag:CreateOptionsFrame()
@@ -1075,7 +1429,7 @@ function OneStorageBag:CreateOptionsFrame()
     
     local parent = self.frame or self:CreateFrame()
     local opt = CreateFrame("Frame", "OneStorageBagOptionsFrame", UIParent, BackdropTemplateMixin and "BackdropTemplate" or nil)
-    opt:SetSize(230, 375)
+    opt:SetSize(230, 475)
     opt:SetFrameStrata(parent:GetFrameStrata())
     opt:SetFrameLevel(math.max(1, parent:GetFrameLevel()))
     opt:SetClampedToScreen(true)
@@ -1101,6 +1455,14 @@ function OneStorageBag:CreateOptionsFrame()
         OneStorageBag:SavePosition()
     end)
     
+    -- Automatically close docked scrap options if bag options hides
+    opt:HookScript("OnHide", function()
+        if self.isScrapDocked and OneStorageScrap and OneStorageScrap.optionsFrame and OneStorageScrap.optionsFrame:IsShown() then
+            OneStorageScrap.optionsFrame:Hide()
+            self.isScrapDocked = false
+        end
+    end)
+    
     -- UI Controls inside Options Panel
     local controls = {}
     local yOffset = -38
@@ -1110,7 +1472,7 @@ function OneStorageBag:CreateOptionsFrame()
     local s1Header = opt:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     s1Header:SetPoint("TOPLEFT", opt, "TOPLEFT", marginX, yOffset)
     s1Header:SetText("|cffffcc00Display & Layout|r")
-    yOffset = yOffset - 24
+    yOffset = yOffset - 22
     
     -- Stepper: Columns
     local colStepper = FrameHelper:CreateStepper(
@@ -1128,7 +1490,7 @@ function OneStorageBag:CreateOptionsFrame()
     colStepper:SetPoint("TOPLEFT", opt, "TOPLEFT", marginX, yOffset)
     colStepper:SetWidth(194)
     table.insert(controls, colStepper)
-    yOffset = yOffset - 28
+    yOffset = yOffset - 26
     
     -- Checkbox: Separate Bag Rows
     local sepCb = FrameHelper:CreateCheckbox(
@@ -1146,7 +1508,7 @@ function OneStorageBag:CreateOptionsFrame()
     )
     sepCb:SetPoint("TOPLEFT", opt, "TOPLEFT", marginX, yOffset)
     table.insert(controls, sepCb)
-    yOffset = yOffset - 26
+    yOffset = yOffset - 24
     
     -- Checkbox: Show Bag Drawer
     local drawerCb = FrameHelper:CreateCheckbox(
@@ -1173,13 +1535,50 @@ function OneStorageBag:CreateOptionsFrame()
     )
     drawerCb:SetPoint("TOPLEFT", opt, "TOPLEFT", marginX, yOffset)
     table.insert(controls, drawerCb)
-    yOffset = yOffset - 34
+    yOffset = yOffset - 24
+    
+    -- Checkbox: Large Money Text
+    local moneyCb = FrameHelper:CreateCheckbox(
+        opt,
+        "OneStorageBagOptions_LargeMoney",
+        "Large Money Text",
+        "Make the money text and coin icons at the bottom of the bag frame larger.",
+        function()
+            return OneStorageBag:GetOption("largeMoney")
+        end,
+        function(val)
+            OneStorageBag:SetOption("largeMoney", val)
+            OneStorageBag:UpdateMoney()
+        end
+    )
+    moneyCb:SetPoint("TOPLEFT", opt, "TOPLEFT", marginX, yOffset)
+    table.insert(controls, moneyCb)
+    yOffset = yOffset - 24
+    
+    -- Checkbox: Enhanced Alt Tooltip
+    local altTipCb = FrameHelper:CreateCheckbox(
+        opt,
+        "OneStorageBagOptions_AltTooltip",
+        "Enhanced Alt Tooltip",
+        "Display a sub-frame anchored to the bottom of the item tooltip showing item counts across all your characters.",
+        function()
+            return OneStorageUtilsDB and OneStorageUtilsDB.showAltTooltip ~= false
+        end,
+        function(val)
+            if OneStorageUtilsDB then
+                OneStorageUtilsDB.showAltTooltip = val
+            end
+        end
+    )
+    altTipCb:SetPoint("TOPLEFT", opt, "TOPLEFT", marginX, yOffset)
+    table.insert(controls, altTipCb)
+    yOffset = yOffset - 30
     
     -- SECTION 2: Auto-Open Triggers
     local s2Header = opt:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     s2Header:SetPoint("TOPLEFT", opt, "TOPLEFT", marginX, yOffset)
     s2Header:SetText("|cffffcc00Auto-Open With|r")
-    yOffset = yOffset - 24
+    yOffset = yOffset - 22
     
     local function AddAutoCb(propName, labelText, tooltipText)
         local cb = FrameHelper:CreateCheckbox(
@@ -1196,7 +1595,7 @@ function OneStorageBag:CreateOptionsFrame()
         )
         cb:SetPoint("TOPLEFT", opt, "TOPLEFT", marginX, yOffset)
         table.insert(controls, cb)
-        yOffset = yOffset - 24
+        yOffset = yOffset - 22
     end
     
     AddAutoCb("autoOpenVendor", "Merchant / Vendor", "Automatically open bags when visiting a vendor.")
@@ -1205,13 +1604,59 @@ function OneStorageBag:CreateOptionsFrame()
     AddAutoCb("autoOpenTrade", "Trade Window", "Automatically open bags when trading with a player.")
     AddAutoCb("autoOpenAuction", "Auction House", "Automatically open bags when talking to an auctioneer.")
     
-    yOffset = yOffset - 10
+    yOffset = yOffset - 8
     
-    -- SECTION 3: Window Settings
+    -- SECTION 3: OneStorage Scrap Integration
     local s3Header = opt:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     s3Header:SetPoint("TOPLEFT", opt, "TOPLEFT", marginX, yOffset)
-    s3Header:SetText("|cffffcc00Window Settings|r")
-    yOffset = yOffset - 26
+    s3Header:SetText("|cffffcc00OneStorage Scrap|r")
+    yOffset = yOffset - 22
+    
+    local scrapCb = FrameHelper:CreateCheckbox(
+        opt,
+        "OneStorageBagOptions_OpenScrapOptions",
+        "Open Scrap Options",
+        "Automatically open the OneStorage Scrap options panel docked to the left of the bag options.",
+        function()
+            return OneStorageBag:GetOption("openScrapOptions")
+        end,
+        function(val)
+            OneStorageBag:SetOption("openScrapOptions", val)
+            if val then
+                OneStorageBag:OpenScrapOptions()
+            else
+                OneStorageBag:CloseScrapOptions()
+            end
+        end
+    )
+    scrapCb:SetPoint("TOPLEFT", opt, "TOPLEFT", marginX, yOffset)
+    table.insert(controls, scrapCb)
+    yOffset = yOffset - 24
+    
+    local openScrapBtn = FrameHelper:CreateSilverButton(opt, "OneStorageBagOptions_OpenScrapBtn", "Scrap Options...")
+    openScrapBtn:SetSize(140, 22)
+    openScrapBtn:SetPoint("TOPLEFT", opt, "TOPLEFT", marginX, yOffset)
+    openScrapBtn:SetScript("OnClick", function()
+        OneStorageBag:ToggleScrapOptions()
+    end)
+    openScrapBtn:HookScript("OnEnter", function(s)
+        GameTooltip:SetOwner(s, "ANCHOR_RIGHT")
+        GameTooltip:SetText("Scrap & Repair Options", 1, 1, 1)
+        if OneStorageScrap then
+            GameTooltip:AddLine("Open or close the OneStorage Scrap options panel docked to the left of Bag Options.", 0.8, 0.8, 0.8, true)
+        else
+            GameTooltip:AddLine("|cffff2020OneStorageScrap is not installed or loaded.|r", 1, 0.2, 0.2, true)
+        end
+        GameTooltip:Show()
+    end)
+    openScrapBtn:HookScript("OnLeave", function() GameTooltip:Hide() end)
+    yOffset = yOffset - 30
+    
+    -- SECTION 4: Window Settings
+    local s4Header = opt:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    s4Header:SetPoint("TOPLEFT", opt, "TOPLEFT", marginX, yOffset)
+    s4Header:SetText("|cffffcc00Window Settings|r")
+    yOffset = yOffset - 24
     
     local resetBtn = FrameHelper:CreateSilverButton(opt, "OneStorageBagOptions_ResetPosBtn", "Reset Position")
     resetBtn:SetSize(140, 22)
@@ -1224,6 +1669,13 @@ function OneStorageBag:CreateOptionsFrame()
     opt.RefreshOptions = function()
         for _, c in ipairs(controls) do
             if c.Refresh then c:Refresh() end
+        end
+        if openScrapBtn then
+            if OneStorageScrap then
+                openScrapBtn:Enable()
+            else
+                openScrapBtn:Disable()
+            end
         end
     end
     
@@ -1241,6 +1693,9 @@ function OneStorageBag:ToggleOptions()
         self:DockOptions()
         opt:RefreshOptions()
         opt:Show()
+        if self:GetOption("openScrapOptions") then
+            self:OpenScrapOptions()
+        end
     end
 end
 
@@ -1356,6 +1811,23 @@ SlashCmdList["ONESTORAGEBAG"] = function(msg)
             OneStorageBag:RefreshLayout()
         end
         print("|cff00ccff[OneStorageBag]|r Column width set to " .. c)
+    elseif cmd == "scrap" or cmd == "scrapopt" then
+        if not OneStorageBag.frame or not OneStorageBag.frame:IsShown() then
+            OneStorageBag:Show()
+        end
+        if not OneStorageBag.optionsFrame or not OneStorageBag.optionsFrame:IsShown() then
+            OneStorageBag:ToggleOptions()
+        end
+        OneStorageBag:ToggleScrapOptions()
+    elseif cmd == "money" or cmd == "largemoney" then
+        local current = OneStorageBag:GetOption("largeMoney")
+        OneStorageBag:SetOption("largeMoney", not current)
+        OneStorageBag:UpdateMoney()
+        if OneStorageBag.optionsFrame and OneStorageBag.optionsFrame:IsShown() and OneStorageBag.optionsFrame.RefreshOptions then
+            OneStorageBag.optionsFrame:RefreshOptions()
+        end
+        local stateStr = OneStorageBag:GetOption("largeMoney") and "|cff00ff00Enabled (Large)|r" or "|cffffcc00Disabled (Standard)|r"
+        print("|cff00ccff[OneStorageBag]|r Large money text: " .. stateStr)
     else
         OneStorageBag:Toggle()
     end
