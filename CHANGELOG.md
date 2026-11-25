@@ -5,6 +5,23 @@ All notable changes to **OneStorageBag** are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.11] - 2026-11-22
+### Fixed
+- **Reset Character Selection on Close**:
+  - Updated `OnBagHide()` to clear `viewingAlt` and reset the `CharSelect` dropdown to `UnitName("player")` whenever the bag window is closed (via `X`, `Escape`, keybind toggle, or `CloseAllBags`), so reopening the bag always defaults back to the logged-in character.
+
+---
+
+## [0.0.10] - 2026-11-20
+### Fixed
+- **Live Item & Cooldown Refresh During Combat**:
+  - Separated non-protected item/visual refresh (`RefreshItems()`) from structural layout changes (`RefreshLayout()`).
+  - During `InCombatLockdown()`, `RefreshLayout()` now defers structural frame/parent/anchor changes to `PLAYER_REGEN_ENABLED` while immediately executing `RefreshItems()` so item textures, stack counts, cooldowns, quality borders, and free-slot counts update live when opening or using items in combat.
+  - Pre-builds and positions bag slot buttons on `PLAYER_LOGIN` so bags are ready even if opened for the first time in combat.
+  - Added `BAG_UPDATE_COOLDOWN` event listener and guarded `RegisterForClicks`/`RegisterForDrag` in `UpdateButton()` against combat lockdown.
+
+---
+
 ## [0.0.9] - 2026-11-15
 ### Fixed
 - **Alt Bag Snapshot Icon & Link Self-Healing**:

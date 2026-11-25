@@ -7,7 +7,7 @@
 ## 🎯 Overview & Scope
 
 - **Addon Name**: OneStorageBag
-- **Current Version**: 0.0.8
+- **Current Version**: 0.0.11
 - **Suite**: Part of the **OneSuite** family (OneStorage Inventory Suite)
 - **GitHub Repository**:
   - Exists: TRUE
@@ -68,6 +68,17 @@ When picking up development on this addon:
 ---
 
 ## ✅ Recent Completed Work (Latest Spins)
+
+### Spin 0.0.11
+- **Reset Character Selection on Close**:
+  - Updated `OnBagHide()` to clear `viewingAlt` and reset `CharSelect` to `UnitName("player")` whenever the bag window is closed, so reopening always defaults back to the logged-in character.
+
+### Spin 0.0.10
+- **Live Item & Cooldown Refresh During Combat**:
+  - Separated non-protected item/visual refresh (`RefreshItems()`) from structural layout changes (`RefreshLayout()`).
+  - During `InCombatLockdown()`, `RefreshLayout()` defers structural frame/parent/anchor changes to `PLAYER_REGEN_ENABLED` while immediately executing `RefreshItems()` so item textures, stack counts, cooldowns, quality borders, and free-slot counts update live when opening or using items in combat.
+  - Pre-builds and positions bag slot buttons on `PLAYER_LOGIN` so bags are ready even if opened for the first time in combat.
+  - Added `BAG_UPDATE_COOLDOWN` event listener and guarded `RegisterForClicks`/`RegisterForDrag` in `UpdateButton()` against combat lockdown.
 
 ### Spin 0.0.9
 - **Alt Bag Snapshot Icon & Link Self-Healing**:

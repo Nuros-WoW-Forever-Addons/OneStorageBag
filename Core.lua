@@ -368,9 +368,22 @@ end
 -- Grid Layout & Refresh
 -------------------------------------------------------------------------------
 
+function OneStorageBag:RefreshItems()
+    if not self.frame or not self.buttons then return end
+    for _, btn in ipairs(self.buttons) do
+        if btn:IsShown() and btn.bag and btn.slot then
+            self:UpdateButton(btn)
+        end
+    end
+    self:UpdateTitle()
+    self:UpdateMoney()
+    self:UpdateBagBar()
+end
+
 function OneStorageBag:RefreshLayout()
     if InCombatLockdown and InCombatLockdown() then
         self.needsLayoutUpdate = true
+        self:RefreshItems()
         return
     end
     if not self.frame or not self.frame.ContentArea then return end
@@ -616,17 +629,25 @@ function OneStorageBag:UpdateButton(btn)
                 readable = false,
             }
         end
-        btn.isAltSlot = true
+        if not btn.isAltSlot then
+            btn.isAltSlot = true
+            -- Disable clicks and drags on cached alt slots to prevent interaction errors
+            if not (InCombatLockdown and InCombatLockdown()) then
+                btn:RegisterForClicks()
+                btn:RegisterForDrag()
+            end
+        end
         btn.altLink = (info and info.hyperlink) or (slotData and slotData.link)
-        -- Disable clicks and drags on cached alt slots to prevent interaction errors
-        btn:RegisterForClicks()
-        btn:RegisterForDrag()
     else
-        btn.isAltSlot = false
+        if btn.isAltSlot then
+            btn.isAltSlot = false
+            -- Restore native clicks and drags for current player's live inventory
+            if not (InCombatLockdown and InCombatLockdown()) then
+                btn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+                btn:RegisterForDrag("LeftButton")
+            end
+        end
         btn.altLink = nil
-        -- Restore native clicks and drags for current player's live inventory
-        btn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-        btn:RegisterForDrag("LeftButton")
         info = ContainerHelper:GetItemInfo(bagID, slotID)
     end
     
@@ -1265,6 +1286,12 @@ function OneStorageBag:CreateFrame()
         if OneStorageBag.optionsFrame and OneStorageBag.optionsFrame:IsShown() then
             OneStorageBag.optionsFrame:Hide()
         end
+        if OneStorageBag.viewingAlt then
+            OneStorageBag.viewingAlt = nil
+            if OneStorageBag.frame and OneStorageBag.frame.CharSelect and OneStorageBag.frame.CharSelect.SetSelected then
+                OneStorageBag.frame.CharSelect:SetSelected(UnitName("player"))
+            end
+        end
     end
 
     if frame.HookScript then
@@ -1712,6 +1739,7 @@ SafeRegisterEvent(eventFrame, "ADDON_LOADED")
 SafeRegisterEvent(eventFrame, "PLAYER_LOGIN")
 SafeRegisterEvent(eventFrame, "BAG_UPDATE")
 SafeRegisterEvent(eventFrame, "BAG_UPDATE_DELAYED")
+SafeRegisterEvent(eventFrame, "BAG_UPDATE_COOLDOWN")
 SafeRegisterEvent(eventFrame, "BAG_CONTAINER_UPDATE")
 SafeRegisterEvent(eventFrame, "PLAYER_EQUIPMENT_CHANGED")
 SafeRegisterEvent(eventFrame, "ITEM_LOCK_CHANGED")
@@ -1740,6 +1768,7 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1)
         
     elseif event == "PLAYER_LOGIN" then
         OneStorageBag:CreateFrame()
+        OneStorageBag:RefreshLayout()
         
     elseif event == "PLAYER_REGEN_ENABLED" then
         if OneStorageBag.needsLayoutUpdate or (OneStorageBag.frame and OneStorageBag.frame:IsShown()) then
@@ -1750,6 +1779,11 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1)
     elseif event == "BAG_UPDATE" or event == "BAG_UPDATE_DELAYED" or event == "BAG_CONTAINER_UPDATE" or event == "PLAYER_EQUIPMENT_CHANGED" or event == "ITEM_LOCK_CHANGED" then
         if OneStorageBag.frame and OneStorageBag.frame:IsShown() then
             OneStorageBag:RefreshLayout()
+        end
+        
+    elseif event == "BAG_UPDATE_COOLDOWN" then
+        if OneStorageBag.frame and OneStorageBag.frame:IsShown() then
+            OneStorageBag:RefreshItems()
         end
         
     elseif event == "PLAYER_MONEY" then
